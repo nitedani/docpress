@@ -6,7 +6,6 @@ export { viewMobile }
 export { navLeftWidthMin }
 export { navLeftWidthMax }
 export { bodyMaxWidth }
-export { barShadow }
 
 // - @media VS @container
 //   - Using `@container container-viewport` instead of @media would be interesting because @media doesn't consider the scrollbar width.
@@ -35,7 +34,7 @@ import { cls } from './utils/cls.js'
 import { iconBooks } from './icons/index.js'
 import { PageHeader, PageFooter } from './PageChrome.js'
 import { TocRail, tocRailWidth, viewTocRail } from './TocRail.js'
-import { CategoryTabs } from './CategoryTabs.js'
+import { CategoryTabs, fitCategoryTabs_SSR } from './CategoryTabs.js'
 import { ThemeToggle } from './theme/ThemeToggle.js'
 import './Layout.css'
 
@@ -58,8 +57,8 @@ const viewDesktop = (mainViewWidthMax + navLeftWidthMin + blockMargin) as 1061 /
 const viewDesktopLarge = (mainViewWidthMax + navLeftWidthMax + blockMargin) as 1131 // 1131 = 760 + 370 + 1
 // The frame: left navigation + page content + "On this page", and not wider (the eye doesn't travel far)
 const bodyMaxWidth = 1340
-// A bar (the top nav, the category tabs): the bottom hairline, and copies of the bar left and right of it, so that it
-// spans the viewport also beyond `bodyMaxWidth`
+// The top nav: the bottom hairline, and copies of the bar left and right of it, so that it spans the viewport also
+// beyond `bodyMaxWidth`
 const barShadow = [
   `0 ${blockMargin}px 0 var(--dp-color-border)`,
   `-${bodyMaxWidth}px 0 0 var(--dp-color-bg)`,
@@ -94,15 +93,11 @@ function Layout({ children }: { children: React.ReactNode }) {
   const hasCategoryTabs = !!pageContext.globalContext.config.docpress.categoryTabs && !isLandingPage
   return (
     <div
-      className={hasCategoryTabs ? 'has-category-tabs' : undefined}
       style={{
         ['--block-margin']: `${blockMargin}px`,
         ['--nav-head-height']: `${navHeadHeight}px`,
         // Offset for elements sitting below the sticky top nav
-        // (The category tabs' height, see getStyleLayout())
-        ['--nav-head-sticky-offset']: isTopNavSticky
-          ? 'calc(var(--nav-head-height) + var(--nav-tabs-height, 0px))'
-          : '0px',
+        ['--nav-head-sticky-offset']: isTopNavSticky ? 'var(--nav-head-height)' : '0px',
         ['--main-view-padding']: `${mainViewPadding}px`,
         // We don't add `container` to `body` nor `html` beacuse in Firefox it breaks the `position: fixed` of <MenuModal>
         // https://stackoverflow.com/questions/74601420/css-container-inline-size-and-fixed-child
@@ -123,7 +118,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <div className={isLandingPage ? 'landing-page' : 'doc-page'} style={whitespaceBuster1}>
         <header style={{ position: isTopNavSticky ? 'sticky' : 'relative', top: 0, zIndex: 100 }}>
           <NavHead hasCategoryTabs={hasCategoryTabs} />
-          {hasCategoryTabs && <CategoryTabs />}
+          {hasCategoryTabs && <script dangerouslySetInnerHTML={{ __html: fitCategoryTabs_SSR }}></script>}
           {/* <MenuModal> is inside here because `container-type` on the page wrapper traps `position: fixed` — https://github.com/brillout/docpress/pull/177 */}
           <MenuModal />
         </header>
@@ -363,9 +358,9 @@ function NavHead({ hasCategoryTabs }: { hasCategoryTabs: boolean }) {
     categoryTabs && isLandingPage
       ? (docsUrlSetting ?? pageContext.resolved.categories.flatMap((category) => category.pages)[0]?.url)
       : undefined
-  // The category tabs without `topNavigation`: the search centered in the bar, "Docs" next to it on the landing page
-  // (the search doesn't move between the landing page and the docs)
-  const isSearchCentered = !!navMaxWidth && !!categoryTabs && !topNavigation && !!algolia
+  // The landing page of a site with category tabs and without `topNavigation`: the search centered in the bar, "Docs"
+  // next to it (on doc pages, the tabs follow the logo)
+  const isSearchCentered = !!navMaxWidth && !!categoryTabs && isLandingPage && !topNavigation && !!algolia
 
   const navHeadSecondary = (
     <div className="nav-head-secondary">
@@ -416,14 +411,20 @@ function NavHead({ hasCategoryTabs }: { hasCategoryTabs: boolean }) {
           }}
         >
           {!hideNavHeadLogo && <NavHeadLogo />}
+          {hasCategoryTabs && <CategoryTabs />}
           {navMaxWidth && !isSearchCentered && <div className="desktop-grow" />}
           {algolia && <SearchLink />}
           {/* On desktop, it's in <ExternalLinks> */}
           {darkMode && <ThemeToggle className="icon-button nav-head-theme-toggle" />}
           {docsUrl && <DocsLink href={docsUrl} />}
-          {/* On desktop, the category tabs (doc pages) or the "Docs" link (landing page) replace the "Docs" menu */}
+          {/* On desktop, the category tabs (doc pages, where they fit) or the "Docs" link (landing page) replace the
+              "Docs" menu */}
           <MenuToggleMain
-            className={cls(['nav-head-menu-toggle', (hasCategoryTabs || !!docsUrl) && 'show-only-on-mobile'])}
+            className={cls([
+              'nav-head-menu-toggle',
+              hasCategoryTabs && 'show-if-category-tabs-overflow',
+              !!docsUrl && 'show-only-on-mobile',
+            ])}
           />
           {navHeadSecondary}
         </div>
@@ -593,7 +594,9 @@ function getStyleLayout(isNavLeftAlwaysHidden: boolean) {
   }
   .text-menu,
   .nav-head .nav-head-theme-toggle,
-  .show-only-on-mobile {
+  .show-only-on-mobile,
+  :root:not(.category-tabs-overflow) .show-if-category-tabs-overflow,
+  :root.category-tabs-overflow .category-tabs {
     display: none;
   }
   /* A menu's toggle while its menu is open */
@@ -616,10 +619,6 @@ function getStyleLayout(isNavLeftAlwaysHidden: boolean) {
   .desktop-grow,
   .has-max-width .nav-head-secondary {
     flex-grow: 1;
-  }
-  /* Category tabs (\`categoryTabs\`) */
-  .has-category-tabs {
-    --nav-tabs-height: 44px;
   }
   .nav-head-content-search-centered {
     display: grid;

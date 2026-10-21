@@ -49,9 +49,9 @@ type Config = {
   tocProgress?: boolean
 
   /**
-   * Show the categories (the level-1 headings) as tabs below the top bar, on desktop, instead of the "Docs" menu. Each tab
-   * links to its category's first page; the left navigation lists the category's pages. On the landing page, "Docs" is a
-   * link to the docs' entry page (see `docsUrl`).
+   * Show the categories (the level-1 headings) as tabs in the top bar, on desktop where they fit, instead of the "Docs"
+   * menu. Each tab links to its category's first page; the left navigation lists the category's pages. On the landing
+   * page, "Docs" is a link to the docs' entry page (see `docsUrl`).
    *
    * @default false
    */
